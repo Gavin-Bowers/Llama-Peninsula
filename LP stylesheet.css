@@ -1,0 +1,33 @@
+body
+{
+	background-color: #00264d;
+}
+canvas 
+{
+	padding-left: 0px;
+    padding-right: 0px;
+    margin-left: auto;
+    margin-right: auto;
+	margin-top: 0px;
+	margin-bottom:0px;
+    display: block;
+	background-color: #778899;
+}
+label 
+{
+	font-size: 140%;
+	padding-top: 0px;
+    padding-bottom: 5px;
+	color: rgb(255,255,255);
+	font-family: "Lucida Sans Unicode", "Lucida Grande", sans-serif;
+	text-align: center;
+	display: block;
+}
+label::selection
+{
+	background: none;
+}
+img 
+{
+	position: absolute;
+}

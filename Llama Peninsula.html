@@ -1,0 +1,587 @@
+<html>
+	<head>
+		<title>Llama Peninsula</title>
+		<link rel="stylesheet" type="text/css" href="LP stylesheet.css">
+	</head>
+	<body>
+	<label>Llama Peninsula</label>
+		<canvas id="gameCanvas" width="800" height="600"></canvas>
+	</body>
+<script>
+	var canvas;
+	var canvasContext;
+	var boatX = 360;
+	var boatXVel = 0;
+	var score = 0; var highscore = 0;
+	var paused = false; var restarting = false;
+	var groundHeight = 55;
+	var time = 0;
+	var mPosY; var mPosX;
+	var laserOn = false; var laserJuice = 200;
+	var movingRight = false; var movingLeft = false;
+	var enemySpawnTime = 0; var enemyWait = 300;
+	var restartTime;
+	var boat = new Image();	
+	var  head = new Image(); var headflipped = new Image();
+	boat.src = 'boat-with-llama.png';
+	head.src = 'llama-head-revised-small.png';
+	headflipped.src = 'llama-head-revised-small-flipped.png';
+	var E1 = new Image(); var E2 = new Image(); var E3 = new Image();
+	E1.src = 'enemy-1-small.png';	
+	E2.src = 'enemy-2-small.png';
+	E3.src = 'enemy-3-small.png';
+	var detx1 = 28; var detx2 = 53; var detx3 = 78; var detx4 =  95; var detx5 = 80; var dety1234; var dety5;
+	var detRad123 = 15; var detRad4 = 13; var detRad5 = 7;
+	var bombs = [];
+	var bomb = function(x, y)
+	{
+		this.xPos = x;
+		this.yPos = y;
+		this.yVel = 0.5;
+		this.fuseTime = 800;
+	}
+	var lasers = [];
+	var laser = function(x, y, a)
+	{
+		this.xPos = x;
+		this.yPos = y;
+		this.angle = a;
+	}
+	var enemies = [];
+	var enemy = function()
+	{
+		this.xPos = 50 + (Math.random() * 700);
+		this.yPos = -37;
+		this.type = Math.ceil(Math.random()*3);
+		this.speed = (Math.random() * 0.1) + 0.05;
+		if (this.type == 1 || this.type == 3)
+		{
+			this.yStop = ((Math.random() * 300) + 50);
+			this.attackTimer = 0;
+			this.health = 30;
+			this.hoverDistance = (Math.random() * 40) + 20;
+		}
+		else
+		{
+			this.health = 35;
+		}
+	}
+	function getMousePos(evt) 
+	{
+		var rect = canvas.getBoundingClientRect();
+		var root = document.documentElement;
+		var mouseX = evt.clientX - rect.left - root.scrollLeft;
+		var mouseY = evt.clientY - rect.top - root.scrollTop;
+		return {
+			x: mouseX,
+			y: mouseY
+		};
+	}
+	function fireLaser(evt) 
+	{
+		if (laserJuice > 0)
+		{
+			laserOn = true;
+		}
+	}
+	function stopLaser(evt)
+	{
+		laserOn = false;
+	}
+	function createEnemies()
+	{
+		enemySpawnTime += 1;
+		if (enemySpawnTime >= enemyWait)
+		{
+			enemies.push(new enemy());
+			enemySpawnTime = 0;
+		}
+		enemyWait /= 1.00002;
+	}
+	enemy.prototype.move= function()
+	{
+		if (this.type == 1)
+		{
+			if (this.yPos < this.yStop)
+			{
+				this.yPos += (this.yStop - this.yPos) / 200;
+			}
+			var dx = (boatX + 60) - this.xPos;
+			var dy = (600 - (groundHeight + 40)) - this.yPos;
+			var angle = Math.atan2(dy, dx);
+			var magnitude = ((250 - Math.abs(dx)) / 60);
+			if (Math.abs(dx) < this.hoverDistance + 250) 
+			{
+				this.xPos -= Math.cos(angle) * magnitude;
+			}
+			else
+			{
+				this.xPos += Math.cos(angle) * (this.speed * 3);
+			}
+			if (this.xPos + 22 > 800)
+			{
+				this.xPos = 800-22;
+			}
+			if (this.xPos - 22 < 0)
+			{
+				this.xPos = 22;
+			}
+		}
+		if (this.type == 2)
+		{
+			var dx = (boatX + 60) - this.xPos;
+			var dy = (600 - (groundHeight + 40)) - this.yPos;
+			var angle = Math.atan2(dy, dx);
+			this.xPos += Math.cos(angle) * (this.speed * 10);
+			this.yPos += Math.sin(angle) * (this.speed * 10);			
+		}
+		if (this.type == 3)
+		{
+			if (this.yPos < this.yStop)
+			{
+				this.yPos += (this.yStop - this.yPos) / 200;
+			}
+			var dx = (boatX + 60) - this.xPos;
+			var dy = (600 - (groundHeight + 40)) - this.yPos;
+			var angle = Math.atan2(dy, dx);
+			if (Math.abs(dx) > this.hoverDistance)
+			{
+				this.xPos += Math.cos(angle) * (this.speed * 4);
+			}
+		}
+	}
+	enemy.prototype.attack= function()
+	{
+		if (this.type == 1 || this.type == 3)
+		{
+			this.attackTimer ++;
+			if (this.attackTimer >= 200 + (10 * this.type))
+			{
+				var dx = (boatX + 60) - this.xPos;
+				var dy = (600 - (groundHeight + 40)) - this.yPos;
+				var angle = Math.atan2(dy, dx);
+				this.attackTimer = 0;
+				if (this.type == 1)
+				{
+					lasers.push(new laser(this.xPos, this.yPos, angle));
+				}
+				if (this.type == 3)
+				{
+					bombs.push(new bomb(this.xPos, this.yPos + 20));
+				}
+			}
+		}
+	}
+	enemy.prototype.draw= function()
+	{
+		if (this.type == 1)
+		{
+			canvasContext.drawImage(E1,this.xPos-21.5,this.yPos-46.5,43,68);
+		}
+		if (this.type == 2)
+		{
+			canvasContext.drawImage(E2,this.xPos-32,this.yPos-34,64,68);
+		}
+		if (this.type == 3)
+		{
+			canvasContext.drawImage(E3,this.xPos-21.5,this.yPos-46.5,43,72);
+		}	
+	}
+	enemy.prototype.detect= function(en)
+	{
+		var x1 = boatX+79;
+		var y1 = 600 - (groundHeight+38);
+		var angle = Math.atan((mPosY-(600-(groundHeight+38)))/(mPosX-(boatX+79)));
+		for (var i = 0; i < 900; i += 6)
+		{
+			if (mPosX >= x1)
+			{
+				var lx = x1 + (i * Math.cos(angle));
+				var ly = y1 + (i * Math.sin(angle));
+			}
+			else
+			{
+				var lx = x1 - (i * Math.cos(angle));
+				var ly = y1 - (i * Math.sin(angle));
+			}
+			var dx = this.xPos - lx;
+			var dy = this.yPos - ly;
+			var dt = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
+			if (dt <= 21.5)
+			{
+				this.health--;
+				if (this.health <= 0)
+				{
+				enemies.splice(en, 1);
+				}
+				return;
+			}
+		}
+	}
+	enemy.prototype.detectKill = function()
+	{
+		if (this.type == 2)
+		{
+			var radius = 32;
+			var dx1 = (detx1 + boatX) - this.xPos;
+			var dx2 = (detx2 + boatX) - this.xPos;
+			var dx3 = (detx3 + boatX) - this.xPos;
+			var dx4 = (detx4 + boatX) - this.xPos;
+			var dx5 = (detx5 + boatX) - this.xPos;
+			var dy1234 = dety1234 - this.yPos;
+			var dy5 = dety5 - this.yPos;
+			var dt1 = Math.sqrt(Math.pow(dx1, 2) + Math.pow(dy1234, 2));
+			var dt2 = Math.sqrt(Math.pow(dx2, 2) + Math.pow(dy1234, 2));			
+			var dt3 = Math.sqrt(Math.pow(dx3, 2) + Math.pow(dy1234, 2));
+			var dt4 = Math.sqrt(Math.pow(dx4, 2) + Math.pow(dy1234, 2));			
+			var dt5 = Math.sqrt(Math.pow(dx5, 2) + Math.pow(dy5, 2));
+			if (dt1 < radius + detRad123 || dt2 < radius + detRad123 || dt3 < radius + detRad123 || dt4 < radius + detRad4 || dt5 < radius + detRad5)
+			{
+				startRestart();
+			}
+		}
+	}
+	laser.prototype.move= function()
+	{
+		this.xPos += Math.cos(this.angle) * 2;
+		this.yPos += Math.sin(this.angle) * 2;
+	}
+	laser.prototype.draw= function()
+	{
+		colorCircle(this.xPos, this.yPos, 8, 'red');
+	}
+	laser.prototype.detect= function(i)
+	{
+		var radius = 8;
+		var dx1 = (detx1 + boatX) - this.xPos;
+		var dx2 = (detx2 + boatX) - this.xPos;
+		var dx3 = (detx3 + boatX) - this.xPos;
+		var dx4 = (detx4 + boatX) - this.xPos;
+		var dx5 = (detx5 + boatX) - this.xPos;
+		var dy1234 = dety1234 - this.yPos;
+		var dy5 = dety5 - this.yPos;
+		var dt1 = Math.sqrt(Math.pow(dx1, 2) + Math.pow(dy1234, 2));
+		var dt2 = Math.sqrt(Math.pow(dx2, 2) + Math.pow(dy1234, 2));			
+		var dt3 = Math.sqrt(Math.pow(dx3, 2) + Math.pow(dy1234, 2));
+		var dt4 = Math.sqrt(Math.pow(dx4, 2) + Math.pow(dy1234, 2));			
+		var dt5 = Math.sqrt(Math.pow(dx5, 2) + Math.pow(dy5, 2));
+		if (dt1 < radius + detRad123 || dt2 < radius + detRad123 || dt3 < radius + detRad123 || dt4 < radius + detRad4 || dt5 < radius + detRad5)
+		{
+		startRestart();
+		}
+		if (this.xPos - 8 > 800 || this.xPos + 8 < 0 || this.yPos - 8 > 600 - groundHeight)
+		{
+			lasers.splice(i, 1);
+		}
+	}
+	bomb.prototype.move= function()
+	{
+		this.yVel += 0.01;
+		if (this.yVel > 6)
+		{
+			this.yVel = 6;
+		}
+		this.yPos += this.yVel;
+		if (this.yPos > 600 - groundHeight)
+		{
+			this.yPos = 600 - groundHeight;
+		}
+	}
+	bomb.prototype.draw= function()
+	{
+		colorCircle(this.xPos,this.yPos,11,'black');
+		colorCircle(this.xPos,this.yPos,10,'grey');
+		if (this.fuseTime <= 10)
+		{
+			colorCircle(this.xPos,this.yPos,40 - this.fuseTime,'orange');
+		}
+	}
+	bomb.prototype.detect= function(i)
+	{
+		this.fuseTime --;
+		if (this.fuseTime <= 0)
+		{
+			var radius = 40;
+			var dx1 = (detx1 + boatX) - this.xPos;
+			var dx2 = (detx2 + boatX) - this.xPos;
+			var dx3 = (detx3 + boatX) - this.xPos;
+			var dx4 = (detx4 + boatX) - this.xPos;
+			var dx5 = (detx5 + boatX) - this.xPos;
+			var dy1234 = dety1234 - this.yPos;
+			var dy5 = dety5 - this.yPos;
+			var dt1 = Math.sqrt(Math.pow(dx1, 2) + Math.pow(dy1234, 2));
+			var dt2 = Math.sqrt(Math.pow(dx2, 2) + Math.pow(dy1234, 2));			
+			var dt3 = Math.sqrt(Math.pow(dx3, 2) + Math.pow(dy1234, 2));
+			var dt4 = Math.sqrt(Math.pow(dx4, 2) + Math.pow(dy1234, 2));			
+			var dt5 = Math.sqrt(Math.pow(dx5, 2) + Math.pow(dy5, 2));
+			if (dt1 < radius + detRad123 || dt2 < radius + detRad123 || dt3 < radius + detRad123 || dt4 < radius + detRad4 || dt5 < radius + detRad5)
+			{
+				startRestart();
+			}
+			else
+			{
+				bombs.splice(i, 1);				
+			}
+		}
+	}
+	document.body.onkeydown = function(e)
+	{
+		if (e.keyCode == 32)
+		{
+			if (!paused) 
+			{	
+				paused = true;
+			} 
+			else if (paused) 
+			{
+				if (!restarting)
+				{
+					paused = false;
+				}
+			}
+		}
+		if (e.keyCode == 37)
+		{
+			movingLeft = true;
+			movingRight = false;
+		}
+		if (e.keyCode == 39)
+		{
+			movingRight = true;
+			movingLeft = false;
+		}
+	}
+	document.body.onkeyup = function(e)
+	{
+		if (e.keyCode == 37)
+		{
+			movingLeft = false;
+			boatXVel = 0;
+		}
+		else if (e.keyCode == 39)
+		{
+			movingRight = false;
+			boatXVel = 0;
+		}
+	}	
+	function disableSelection(element) 
+	{
+        if (typeof element.onselectstart != 'undefined') 
+		{
+            element.onselectstart = function() { return false; };
+        } else if (typeof element.style.MozUserSelect != 'undefined') 
+		{
+            element.style.MozUserSelect = 'none';
+        } else {
+             element.onmousedown = function() { return false; };
+        }
+    }
+	window.onload = function() 
+	{
+		canvas = document.getElementById('gameCanvas');
+		canvasContext = canvas.getContext('2d');
+		canvasContext.font = "20px Arial";
+		setInterval(function(){if (paused == false){createEnemies();moveAll();drawAll();handleCollision();} if (restarting) {restartTime ++; colorRect(0,0,800,600,'red'); if (restartTime >= 500) {restart();}}},5);
+		canvas.addEventListener('mousemove', function(evt) {var mousePos = getMousePos(evt); if (!paused) {mPosY = mousePos.y; mPosX = mousePos.x;}});
+		canvas.addEventListener('mousedown',fireLaser);
+		canvas.addEventListener('mouseup',stopLaser);	
+		var labels = document.getElementsByTagName('label');
+        for (var i = 0; i < labels.length; i++) 
+		{
+            disableSelection(labels[i]);
+        }
+		enemies.push(new enemy());
+	}
+	function moveAll() 
+	{
+		time += 0.01;
+		groundHeight = 55 +  (3 * Math.sin(time));
+		if (movingLeft)
+		{
+			boatXVel -= 0.02;
+			if (boatXVel < -1.5)
+			{
+				boatXVel = -1.5;
+			}
+			boatX += boatXVel;
+		}
+		if (movingRight) 
+		{
+			boatXVel += 0.02;
+			if (boatXVel > 1.5)
+			{
+				boatXVel = 1.5;
+			}
+			boatX += boatXVel;
+		}
+		if (boatX < 0)
+		{
+			boatX = 0;
+		}
+		if (boatX + 120 > 800)
+		{
+			boatX = 800-120;
+		}
+		for (var i = 0; i < enemies.length; i++) 
+		{
+			enemies[i].move();
+			enemies[i].attack();
+		}
+		for (var i = 0; i < lasers.length; i++) 
+		{
+			lasers[i].move();
+		}
+		for (var i = 0; i < bombs.length; i++) 
+		{
+			bombs[i].move();
+		}
+		dety1234 = 600 - (groundHeight + 15);
+		dety5 =  600 - (groundHeight + 38);
+	}	
+	function drawAll()
+	{
+		colorRect(0,0,800,600,"#b3c6ff"); // Sky
+		colorRect(0,590-groundHeight,800,groundHeight,"#0070E8");// Far water
+		for (var i = 0; i < bombs.length; i++) 
+		{
+			bombs[i].draw();
+		}
+		for (var i = 0; i < enemies.length; i++) 
+		{
+			enemies[i].draw();
+		}
+		for (var i = 0; i < lasers.length; i++) 
+		{
+			lasers[i].draw();
+		}
+		canvasContext.drawImage(boat, boatX, 600 - (groundHeight+40),120,50);
+		canvasContext.save();
+		canvasContext.translate(boatX+79, 600 - (groundHeight+38));
+		canvasContext.rotate(Math.atan((mPosY-(600-(groundHeight+38)))/(mPosX-(boatX+79))));
+		if (laserJuice > 200)
+		{
+			laserJuice = 200;
+		}
+		if (laserJuice <= 0)
+		{
+			laserOn = false;
+		}
+		if (mPosX >= boatX+79) 
+		{
+			canvasContext.drawImage(head, -2,-8,11,12);
+			if (laserOn)
+			{		
+				colorRect(5,-11+(8-Math.round(laserJuice/20)),1000,Math.round(laserJuice/10),"#55ff00");
+				laserJuice -= 0.6;
+				if  (laserJuice <= 0)
+				{
+					laserJuice = -45;
+					laserOn = false;
+				}
+			}
+		}
+		else
+		{
+			canvasContext.drawImage(headflipped, -8,-8,11,12);
+			if (laserOn)
+			{
+				colorRect(-4,-11+(8-Math.round(laserJuice/20)),-1000,Math.round(laserJuice/10),"#55ff00");
+				laserJuice -= 0.6;
+				if  (laserJuice <= 0)
+				{
+					laserJuice = -45;
+					laserOn = false;
+				}
+			}
+		}
+		if (!laserOn)
+		{
+			laserJuice += 0.3;
+		}
+		canvasContext.restore();
+		colorRect(0,600-groundHeight,800,groundHeight,"#0070E8"); // Near water
+		showScore();
+	}
+	function handleCollision()
+	{
+		if (laserOn)
+		{
+			for (var i = enemies.length - 1; i >= 0; i--) 
+			{
+			  console.log(i);
+				enemies[i].detect(i);
+			}
+		}
+		for (var i = enemies.length - 1; i >= 0; i--) 
+		{
+			enemies[i].detectKill();
+		}
+		for (var i = lasers.length - 1; i >= 0; i--) 
+		{
+			lasers[i].detect(i);
+		}
+		for (var i = bombs.length - 1; i >= 0; i--) 
+		{
+			bombs[i].detect(i);
+		}
+	}
+	function startRestart()
+	{
+		paused = true;
+		restarting = true;
+		restartTime = 0;
+	}
+	function restart()
+	{
+		if (score > highscore)
+		{
+			highscore = score;
+		}
+		score = 0;
+		var boatX = 360;
+		var boatXVel = 0;
+		var groundHeight = 55;
+		var time = 0;
+		var laserOn = false; var laserJuice = 160;
+		var movingRight = false; var movingLeft = false;
+		var enemySpawnTime = 0; var enemyWait = 400;
+		for (i = enemies.length - 1; i >= 0; i--) 
+		{
+			enemies.splice(i, 1);
+		}
+		for (i = lasers.length-1; i >= 0; i--) 
+		{
+			lasers.splice(i, 1);
+		}
+		for (i = bombs.length - 1; i >= 0; i--) 
+		{
+			bombs.splice(i, 1);
+		}
+		restarting = false;
+		paused = false;
+	}
+	function showScore()
+	{
+		score += 1;
+		canvasContext.fillStyle = 'black';
+		canvasContext.fillText(Math.round(highscore/100),20,25);
+		canvasContext.fillText(Math.round(score/100),20,48);
+	}
+	function colorRect(leftX,topY,width,height,drawColor)
+	{
+		canvasContext.fillStyle = drawColor;
+		if (restarting)
+		{
+		canvasContext.globalAlpha = 0.01 * (restartTime / 5);
+		}
+		canvasContext.fillRect(leftX,topY,width,height); 
+	}
+	function colorCircle(centerX,centerY,radius,drawColor)
+	{
+		canvasContext.fillStyle = drawColor;
+		canvasContext.beginPath();
+		canvasContext.arc(centerX,centerY,radius,0,2*Math.PI,true);
+		canvasContext.fill();
+	}
+</script>
+</html>
